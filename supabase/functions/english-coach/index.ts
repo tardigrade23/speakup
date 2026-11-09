@@ -5,12 +5,31 @@
 //     -> {fluency, grammar, vocabulary, level_estimate, summary, strengths[], improve[], practice[]}
 // Secrets (Supabase → Edge Functions → Secrets):
 //   ANTHROPIC_API_KEY  required
-//   APP_PASSCODE       optional; when set, requests must send the same value in the
-//                      x-app-passcode header, so nobody else can spend your API credit.
+// Passcode: requests must send the value of public.app_config 'passcode' (or the
+// APP_PASSCODE secret, if set) in the x-app-passcode header, so nobody else can
+// spend the API credit. The table is readable only with the service role key.
 import Anthropic from 'npm:@anthropic-ai/sdk@1.3.0';
 
 const client = new Anthropic({ apiKey: Deno.env.get('ANTHROPIC_API_KEY') });
-const PASSCODE = Deno.env.get('APP_PASSCODE') || '';
+const SUPABASE_URL = Deno.env.get('SUPABASE_URL') || '';
+const SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
+
+// The passcode is read from the database and cached for a minute.
+let passcode = { value: Deno.env.get('APP_PASSCODE') || '', at: 0 };
+async function getPasscode(): Promise<string | null> {
+  if (Deno.env.get('APP_PASSCODE')) return passcode.value;
+  if (passcode.value && Date.now() - passcode.at < 60_000) return passcode.value;
+  try {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/app_config?key=eq.passcode&select=value`, {
+      headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}` },
+    });
+    const rows = res.ok ? await res.json() : [];
+    passcode = { value: rows[0]?.value || '', at: Date.now() };
+    return passcode.value;
+  } catch {
+    return passcode.value || null;
+  }
+}
 const MODEL = 'claude-opus-5-5';
 
 const CORS = {
@@ -140,7 +159,9 @@ function textOf(content: Anthropic.Beta.BetaContentBlock[]) {
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
   if (req.method !== 'POST') return json({ error: 'method' }, 405);
-  if (PASSCODE && req.headers.get('x-app-passcode') !== PASSCODE) return json({ error: 'passcode' }, 401);
+  const code = await getPasscode();
+  if (code === null) return json({ error: 'config' }, 500);
+  if (code && req.headers.get('x-app-passcode') !== code) return json({ error: 'passcode' }, 401);
 
   const body = await req.json().catch(() => null);
   if (!body) return json({ error: 'bad_request' }, 400);

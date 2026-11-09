@@ -27,15 +27,14 @@ Live: `https://tardigrade23.github.io/speakup/`
 
 The function runs in the Supabase project **speakup** (`brrisogdhhzxpxgskbjh`). The API key stays on the server.
 
-Function secrets (Supabase dashboard → Edge Functions → Secrets):
-
-- `ANTHROPIC_API_KEY`: required, from platform.claude.com.
-- `APP_PASSCODE`: recommended. The function then answers only requests that carry this code, so nobody else can spend your API credit. Enter the same code in the app under *Ayarlar → Giriş kodu*.
+- `ANTHROPIC_API_KEY` (Supabase dashboard → Edge Functions → Secrets): required, from platform.claude.com.
+- **Passcode:** the function answers only requests that carry the code stored in `public.app_config` (key `passcode`), so nobody else can spend the API credit. The table has row level security on and no policies, so only the service role can read it. Enter the code in the app under *Ayarlar → Giriş kodu*. To change it: `update public.app_config set value = '...' where key = 'passcode';`
 
 ## Deploy
 
-- **App:** `.github/workflows/deploy-pages.yml` publishes to GitHub Pages on every push to the default branch. One-time: repository **Settings → Pages → Source: GitHub Actions**.
-- **AI function:** `.github/workflows/deploy-function.yml` redeploys it when the function changes. It needs repository secrets `SUPABASE_ACCESS_TOKEN` (supabase.com/dashboard/account/tokens) and `ANTHROPIC_API_KEY`, plus optional `APP_PASSCODE`; it also stores those as function secrets. Or by hand: `supabase functions deploy english-coach --project-ref brrisogdhhzxpxgskbjh`.
+- **App:** `.github/workflows/deploy-pages.yml` copies the site to the `gh-pages` branch on every push to `main`; GitHub Pages serves that branch.
+- **AI function:** `supabase functions deploy english-coach --project-ref brrisogdhhzxpxgskbjh` (or through the Supabase dashboard / MCP).
+- **Database:** `supabase/migrations/` (the `app_config` table).
 
 ## Run locally
 
