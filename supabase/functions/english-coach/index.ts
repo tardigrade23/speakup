@@ -206,7 +206,11 @@ Deno.serve(async (req) => {
   } catch (e) {
     if (e instanceof Anthropic.RateLimitError) return json({ error: 'rate_limit' }, 429);
     if (e instanceof Anthropic.AuthenticationError) return json({ error: 'server_key' }, 500);
-    if (e instanceof Anthropic.APIError) return json({ error: 'api', status: e.status }, 502);
+    if (e instanceof Anthropic.APIError) {
+      console.error('Claude API error', e.status, e.message);
+      if (/credit balance/i.test(e.message)) return json({ error: 'no_credit' }, 402);
+      return json({ error: 'api', status: e.status, message: e.message }, 502);
+    }
     if (e instanceof SyntaxError) return json({ error: 'bad_model_output' }, 502);
     return json({ error: 'network' }, 502);
   }

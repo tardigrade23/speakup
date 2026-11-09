@@ -125,6 +125,7 @@ async function callApi(mode, messages, sc, level) {
     server_key: 'Serverdə ANTHROPIC_API_KEY düzgün deyil.',
     refusal: 'AI bu mesaja cavab vermədi. Başqa cür yaz.',
     config: 'Server ayarları oxunmadı. Bir az sonra yenidən cəhd et.',
+    no_credit: 'Anthropic hesabında kredit qurtarıb. platform.claude.com → Billing bölməsindən balans artır.',
   }[body.error];
   if (msg) throw new Error(msg);
   if (res.status === 404) throw new Error('AI server hələ qurulmayıb (english-coach funksiyası tapılmadı).');
