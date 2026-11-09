@@ -1,7 +1,7 @@
 /* SpeakUp service worker: app files network-first (so updates arrive at once),
  * cache fallback offline; Google Fonts cache-first. The AI itself needs the network.
  * Bump CACHE_VERSION when the list of precached files changes. */
-const CACHE_VERSION = 'speakup-v4';
+const CACHE_VERSION = 'speakup-v5';
 const FONT_CACHE = 'speakup-fonts';
 const PRECACHE = ['./', 'index.html', 'style.css', 'app.js', 'manifest.webmanifest', 'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-maskable-512.png', 'icons/apple-touch-icon.png'];
 

@@ -5,6 +5,7 @@
  */
 'use strict';
 
+const APP_VERSION = 5;
 const SUPABASE_URL = 'https://brrisogdhhzxpxgskbjh.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJycmlzb2dkaGh6eHB4Z3NrYmpoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQyMjE1MzIsImV4cCI6MjEwOTc5NzUzMn0.lCmVcmlZSdHloPMNFwJP1skA3rh_YVWXeaDP8Zj8v5k';
 const API = `${SUPABASE_URL}/functions/v1/english-coach`;
@@ -366,8 +367,10 @@ function startListening() {
   recText = '';
   rec.onresult = (e) => {
     const parts = [];
-    for (let i = 0; i < e.results.length; i++) parts.push(e.results[i][0].transcript);
-    recText = mergeTranscripts(parts);
+    for (let i = 0; i < e.results.length; i++) parts.push(String(e.results[i][0].transcript || '').trim());
+    // Android listens to one phrase per session and each result is a fuller version of it,
+    // so the longest one is the whole phrase. Elsewhere results are separate pieces.
+    recText = IS_ANDROID ? parts.reduce((a, b) => (b.length >= a.length ? b : a), '') : mergeTranscripts(parts);
     $('input').value = [base, recText].filter(Boolean).join(' '); autoGrow();
     $('listening-text').textContent = recText ? 'Dinləyirəm… (bitirmək üçün yenidən toxun)' : 'Dinləyirəm…';
   };
@@ -405,6 +408,7 @@ function renderSettings() {
     ? voices.map((v) => `<option value="${esc(v.voiceURI)}">${esc(v.name)} (${esc(v.lang)})</option>`).join('')
     : '<option value="">Sistem səsi</option>';
   const v = pickVoice(); if (v) $('set-voice').value = v.voiceURI;
+  $('app-version').textContent = `Versiya ${APP_VERSION}`;
   $('mic-note').textContent = Rec ? '' : 'ℹ️ Bu brauzerdə səs tanıma yoxdur. Android-də Chrome, iPhone-da Safari istifadə et, ya da klaviaturanın mikrofon düyməsi ilə danış.';
 }
 $('set-passcode').addEventListener('change', (e) => { S.passcode = e.target.value.trim(); save(); toast('Yadda saxlandı'); });
