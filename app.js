@@ -29,13 +29,15 @@ const LEVELS = [
 
 // ---------- state ----------
 const defaults = () => ({
-  level: 'B1', explain: 'az', goal: 10, rate: 0.95, voice: '', autoSpeak: true, autoSend: true, passcode: '',
+  level: 'B1', explain: 'az', goal: 10, rate: 0.95, voice: '', autoSpeak: true, autoSend: false, passcode: '',
   days: {},        // 'YYYY-MM-DD' -> seconds practised
   words: [],       // {word, meaning, at}
   history: [],     // {id, at, scenario, level, messages, feedback}
 });
 let S = defaults();
 try { S = Object.assign(defaults(), JSON.parse(localStorage.getItem(STORE) || '{}')); } catch (e) { /* private mode */ }
+// v2: speech no longer sends by itself, so the learner can fix the text first.
+if (S.v !== 2) { S.autoSend = false; S.v = 2; }
 const save = () => { try { localStorage.setItem(STORE, JSON.stringify(S)); } catch (e) { /* storage full or blocked */ } };
 
 let chat = null; // {id, scenario, level, messages:[{role,content,fixes,words,hint}], startedAt}
@@ -363,6 +365,7 @@ function startListening() {
   rec.onend = () => {
     const had = listening; setListening(false);
     if (had && S.autoSend && recText) send();
+    else if (had && recText) toast('Mətni yoxla, düzəlt və ➤ ilə göndər');
   };
   try { rec.start(); setListening(true); } catch (e) { setListening(false); }
 }
