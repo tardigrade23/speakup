@@ -1,0 +1,3 @@
+*.png
+!icons/*.png
+node_modules/

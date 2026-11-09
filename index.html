@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="az">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://brrisogdhhzxpxgskbjh.supabase.co; manifest-src 'self'; worker-src 'self'; media-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
+  <title>SpeakUp</title>
+  <meta name="description" content="İngilis dilində danışmağı AI həmsöhbətlə gündəlik məşq et.">
+  <meta name="theme-color" content="#0B1622">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="SpeakUp">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="app">
+    <!-- Home -->
+    <section class="screen active" id="screen-home">
+      <header class="topbar">
+        <div class="brand"><img src="icons/icon.svg" alt=""><span>SpeakUp</span></div>
+        <div class="streak" id="streak" title="Ardıcıl günlər">🔥 <b id="streak-n">0</b></div>
+      </header>
+
+      <div class="today card">
+        <div class="ring" id="ring"><svg viewBox="0 0 44 44"><circle cx="22" cy="22" r="19" class="ring-bg"/><circle cx="22" cy="22" r="19" class="ring-fg" id="ring-fg"/></svg><div class="ring-txt"><b id="today-min">0</b><span id="today-goal">/10 dəq</span></div></div>
+        <div class="today-txt">
+          <h2 id="today-title">Bugünkü məşq</h2>
+          <p id="today-sub">Gündə 10 dəqiqə danış, ardıcıllığı qoru.</p>
+        </div>
+      </div>
+
+      <div class="row-head"><h3>Səviyyə</h3></div>
+      <div class="levels" id="levels"></div>
+
+      <div class="row-head"><h3>Mövzu seç</h3></div>
+      <div class="scenarios" id="scenarios"></div>
+    </section>
+
+    <!-- Chat -->
+    <section class="screen" id="screen-chat">
+      <header class="topbar chat-top">
+        <button class="icon-btn" id="chat-back" aria-label="Geri">‹</button>
+        <div class="chat-title"><b id="chat-title">Free talk</b><span id="chat-sub">B1</span></div>
+        <button class="pill" id="chat-finish">Bitir</button>
+      </header>
+      <div class="messages" id="messages"></div>
+      <div class="hint-bar" id="hint-bar" hidden><button id="hint-btn">💡 Nə deyim?</button><span id="hint-text" hidden></span></div>
+      <div class="composer">
+        <textarea id="input" rows="1" placeholder="Type or tap the mic…" autocomplete="off" autocapitalize="sentences" spellcheck="true"></textarea>
+        <button class="send" id="send" aria-label="Göndər">➤</button>
+        <button class="mic" id="mic" aria-label="Danış"><span class="mic-ico">🎙</span></button>
+      </div>
+      <div class="listening" id="listening" hidden><span class="dot"></span><span id="listening-text">Dinləyirəm…</span></div>
+    </section>
+
+    <!-- Feedback -->
+    <section class="screen" id="screen-feedback">
+      <header class="topbar chat-top">
+        <button class="icon-btn" id="fb-back" aria-label="Geri">‹</button>
+        <div class="chat-title"><b>Nəticə</b><span id="fb-sub"></span></div>
+        <span></span>
+      </header>
+      <div class="scroll" id="feedback"></div>
+    </section>
+
+    <!-- Words -->
+    <section class="screen" id="screen-words">
+      <header class="topbar"><h1>Sözlərim</h1><span class="muted" id="words-count"></span></header>
+      <div class="scroll" id="words"></div>
+    </section>
+
+    <!-- History -->
+    <section class="screen" id="screen-history">
+      <header class="topbar"><h1>Tarixçə</h1></header>
+      <div class="scroll" id="history"></div>
+    </section>
+
+    <!-- Settings -->
+    <section class="screen" id="screen-settings">
+      <header class="topbar"><h1>Ayarlar</h1></header>
+      <div class="scroll settings">
+        <label class="field"><span>Giriş kodu</span><input id="set-passcode" type="password" autocomplete="off" placeholder="Serverdə APP_PASSCODE qoymusansa"></label>
+        <label class="field"><span>Düzəlişləri hansı dildə izah etsin</span>
+          <select id="set-explain"><option value="az">Azərbaycan dili</option><option value="en">English</option><option value="tr">Türkçe</option><option value="ru">Русский</option></select></label>
+        <label class="field"><span>Gündəlik hədəf</span>
+          <select id="set-goal"><option value="5">5 dəqiqə</option><option value="10">10 dəqiqə</option><option value="15">15 dəqiqə</option><option value="20">20 dəqiqə</option><option value="30">30 dəqiqə</option></select></label>
+        <label class="field"><span>Səs</span><select id="set-voice"></select></label>
+        <label class="field"><span>Danışıq sürəti <b id="rate-val"></b></span><input id="set-rate" type="range" min="0.6" max="1.2" step="0.05"></label>
+        <label class="toggle"><input id="set-autospeak" type="checkbox"><span>Cavabları avtomatik səsləndir</span></label>
+        <label class="toggle"><input id="set-autosend" type="checkbox"><span>Danışığı bitirəndə avtomatik göndər</span></label>
+        <button class="btn ghost" id="test-voice">🔊 Səsi yoxla</button>
+        <p class="note" id="mic-note"></p>
+        <div class="about">
+          <p><b>Telefona necə yükləmək olar</b></p>
+          <p>Android / Chrome: menyu ⋮ → <i>Install app</i> və ya <i>Add to Home screen</i>.<br>iPhone / Safari: Paylaş → <i>Add to Home Screen</i>.</p>
+          <button class="btn" id="install-btn" hidden>📲 Tətbiqi yüklə</button>
+        </div>
+        <button class="btn danger" id="reset">Bütün məlumatı sil</button>
+      </div>
+    </section>
+
+    <nav class="tabbar" id="tabbar">
+      <button data-tab="home" class="active"><span>🏠</span>Əsas</button>
+      <button data-tab="words"><span>📚</span>Sözlər</button>
+      <button data-tab="history"><span>🕘</span>Tarixçə</button>
+      <button data-tab="settings"><span>⚙️</span>Ayarlar</button>
+    </nav>
+    <div class="toast" id="toast" hidden></div>
+  </div>
+  <script src="app.js"></script>
+</body>
+</html>

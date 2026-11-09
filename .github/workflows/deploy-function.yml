@@ -1,0 +1,54 @@
+name: Deploy SpeakUp AI function
+
+# Deploys the english-coach Supabase Edge Function (the AI behind the app) and
+# stores its secrets. Needs these repository secrets (Settings → Secrets and
+# variables → Actions):
+#   SUPABASE_ACCESS_TOKEN  personal token from supabase.com/dashboard/account/tokens
+#   ANTHROPIC_API_KEY      key from platform.claude.com
+#   APP_PASSCODE           optional; the same code goes into the app's Settings
+on:
+  push:
+    paths:
+      - supabase/functions/english-coach/**
+      - .github/workflows/deploy-english-coach.yml
+  workflow_dispatch:
+
+env:
+  PROJECT_REF: brrisogdhhzxpxgskbjh
+
+jobs:
+  deploy:
+    if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check secrets
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          if [ -z "$SUPABASE_ACCESS_TOKEN" ] || [ -z "$ANTHROPIC_API_KEY" ]; then
+            echo "::error::Add SUPABASE_ACCESS_TOKEN and ANTHROPIC_API_KEY as repository secrets first."
+            exit 1
+          fi
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: 2.54.11
+
+      - name: Set function secrets
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          APP_PASSCODE: ${{ secrets.APP_PASSCODE }}
+        run: |
+          supabase secrets set --project-ref "$PROJECT_REF" ANTHROPIC_API_KEY="$ANTHROPIC_API_KEY"
+          if [ -n "$APP_PASSCODE" ]; then
+            supabase secrets set --project-ref "$PROJECT_REF" APP_PASSCODE="$APP_PASSCODE"
+          fi
+
+      - name: Deploy function
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: supabase functions deploy english-coach --project-ref "$PROJECT_REF" --use-api
