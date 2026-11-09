@@ -163,32 +163,55 @@ class ProviderError extends Error {
 }
 
 // ---------- Gemini ----------
-// Model IDs change often, so try a few and remember the first that answers.
-const GEMINI_MODELS = [Deno.env.get('GEMINI_MODEL'), 'gemini-flash-latest', 'gemini-3.5-flash', 'gemini-3-flash-preview', 'gemini-2.5-flash']
+// Model IDs change often, so try a few and remember the first that answers. The Flash-Lite
+// models answer in about 3 s on the free tier; the bigger Flash models were often overloaded.
+const GEMINI_MODELS = [Deno.env.get('GEMINI_MODEL'), 'gemini-3.1-flash-lite', 'gemini-3.5-flash-lite', 'gemini-flash-lite-latest', 'gemini-3.8-flash']
   .filter((m, i, a): m is string => !!m && a.indexOf(m) === i);
 let geminiModel = '';
 
-async function geminiOnce(model: string, system: string, messages: Msg[], schema: Record<string, unknown>, useSchema: boolean) {
+async function geminiOnce(model: string, system: string, messages: Msg[], schema: Record<string, unknown>, useSchema: boolean, extra: Record<string, unknown> = {}, timeout = 20_000) {
+  const started = Date.now();
   const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
     method: 'POST',
+    signal: AbortSignal.timeout(timeout),
     headers: { 'Content-Type': 'application/json', 'x-goog-api-key': GEMINI_KEY },
     body: JSON.stringify({
       systemInstruction: { parts: [{ text: useSchema ? system : `${system}\n\nReply with only a JSON object that matches this JSON Schema:\n${JSON.stringify(schema)}` }] },
       contents: messages.map((m) => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: m.content }] })),
       generationConfig: useSchema
-        ? { responseMimeType: 'application/json', responseJsonSchema: schema }
-        : { responseMimeType: 'application/json' },
+        ? { responseMimeType: 'application/json', responseJsonSchema: schema, ...extra }
+        : { responseMimeType: 'application/json', ...extra },
     }),
   });
   const data = await res.json().catch(() => ({}));
+  console.log('gemini', model, res.status, `${Date.now() - started}ms`, String(data?.error?.message || '').slice(0, 300));
   return { status: res.status, data };
+}
+
+// Flash models this key can call, for diagnosing model IDs.
+async function geminiModels() {
+  const res = await fetch('https://generativelanguage.googleapis.com/v1beta/models?pageSize=200', {
+    headers: { 'x-goog-api-key': GEMINI_KEY },
+    signal: AbortSignal.timeout(15_000),
+  });
+  const data = await res.json().catch(() => ({}));
+  return { status: res.status, error: data?.error?.message, models: (data?.models || []).map((m: { name: string }) => m.name).filter((n: string) => /flash/i.test(n)) };
 }
 
 async function callGemini(system: string, messages: Msg[], schema: Record<string, unknown>) {
   const order = geminiModel ? [geminiModel, ...GEMINI_MODELS.filter((m) => m !== geminiModel)] : GEMINI_MODELS;
   let last = { status: 0, message: '' };
+  const deadline = Date.now() + 50_000;
   for (const model of order) {
-    let r = await geminiOnce(model, system, messages, schema, true);
+    if (Date.now() > deadline) break;
+    let r: { status: number; data: any };
+    try {
+      r = await geminiOnce(model, system, messages, schema, true);
+    } catch (e) {
+      console.log('gemini', model, 'fetch failed', String(e));
+      last = { status: 504, message: `${model}: ${e}` };
+      continue;
+    }
     // An API version that does not know responseJsonSchema: describe the schema in the prompt instead.
     if (r.status === 400 && /responseJsonSchema|response_json_schema|Unknown name/i.test(JSON.stringify(r.data))) {
       r = await geminiOnce(model, system, messages, schema, false);
@@ -246,6 +269,7 @@ Deno.serve(async (req) => {
 
   const body = await req.json().catch(() => null);
   if (!body) return json({ error: 'bad_request' }, 400);
+  if (body.mode === 'models') return json(GEMINI_KEY ? await geminiModels() : { error: 'no_gemini_key' });
   const mode = body.mode === 'feedback' ? 'feedback' : 'chat';
   const scenario = String(body.scenario || 'free');
   const level = String(body.level || 'B1');

@@ -28,7 +28,7 @@ Live: `https://tardigrade23.github.io/speakup/`
 The function runs in the Supabase project **speakup** (`brrisogdhhzxpxgskbjh`). The API key stays on the server.
 
 - AI key (Supabase dashboard → Edge Functions → Secrets), the first one set wins:
-  - `GEMINI_API_KEY`: free, from aistudio.google.com → Get API key. The function tries `GEMINI_MODEL` (optional), then `gemini-flash-latest`, `gemini-3.5-flash`, `gemini-3-flash-preview` and `gemini-2.5-flash`, moving on when a model is missing or its free quota is used up. On the free tier Google may use the conversations to improve its models.
+  - `GEMINI_API_KEY`: free, from aistudio.google.com → Get API key. The function tries `GEMINI_MODEL` (optional), then `gemini-3.1-flash-lite`, `gemini-3.5-flash-lite`, `gemini-flash-lite-latest` and `gemini-3.8-flash`, moving on when a model is missing or its free quota is used up. On the free tier Google may use the conversations to improve its models.
   - `ANTHROPIC_API_KEY`: Claude, from platform.claude.com; needs API credit, which a Claude Pro subscription does not include.
 - **Passcode:** the function answers only requests that carry the code stored in `public.app_config` (key `passcode`), so nobody else can spend the API credit. The table has row level security on and no policies, so only the service role can read it. Enter the code in the app under *Ayarlar → Giriş kodu*. To change it: `update public.app_config set value = '...' where key = 'passcode';`
 
