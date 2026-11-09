@@ -339,21 +339,35 @@ function unlockSpeech() {
 
 // ---------- speech in ----------
 const Rec = window.SpeechRecognition || window.webkitSpeechRecognition;
+// Chrome on Android repeats the whole phrase in every result ("this", "this evening",
+// "this evening I"…) and leaves out the spaces between results, so it gets one phrase
+// per session, and the pieces are merged without repeating what is already there.
+const IS_ANDROID = /Android/i.test(navigator.userAgent);
+function mergeTranscripts(parts) {
+  let out = '';
+  for (const raw of parts) {
+    const t = String(raw || '').trim();
+    if (!t) continue;
+    const o = out.toLowerCase(); const l = t.toLowerCase();
+    if (!out || l.startsWith(o)) out = t;          // a longer version of the same phrase
+    else if (o.endsWith(l)) continue;              // already there
+    else out = `${out} ${t}`;
+  }
+  return out;
+}
 let rec = null; let recText = ''; let listening = false;
 function startListening() {
   if (!Rec) { toast('Bu brauzer səsi tanımır. Klaviaturadakı mikrofonla (dil: English) danış və ya yaz.', 4200); $('input').focus(); return; }
   if (busy) return;
   stopSpeaking();
   rec = new Rec();
-  rec.lang = 'en-US'; rec.interimResults = true; rec.continuous = true; rec.maxAlternatives = 1;
+  rec.lang = 'en-US'; rec.interimResults = true; rec.continuous = !IS_ANDROID; rec.maxAlternatives = 1;
   const base = $('input').value.trim();
   recText = '';
   rec.onresult = (e) => {
-    let finalText = ''; let interim = '';
-    for (let i = 0; i < e.results.length; i++) {
-      if (e.results[i].isFinal) finalText += e.results[i][0].transcript; else interim += e.results[i][0].transcript;
-    }
-    recText = (finalText + interim).trim();
+    const parts = [];
+    for (let i = 0; i < e.results.length; i++) parts.push(e.results[i][0].transcript);
+    recText = mergeTranscripts(parts);
     $('input').value = [base, recText].filter(Boolean).join(' '); autoGrow();
     $('listening-text').textContent = recText ? 'Dinləyirəm… (bitirmək üçün yenidən toxun)' : 'Dinləyirəm…';
   };
