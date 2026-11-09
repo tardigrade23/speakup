@@ -23,11 +23,13 @@ Live: `https://tardigrade23.github.io/speakup/`
 |---|---|
 | App (no build step) | `index.html`, `app.js`, `style.css` |
 | PWA | `manifest.webmanifest`, `sw.js` (network-first, offline fallback), `icons/` |
-| AI | `supabase/functions/english-coach/index.ts`: Supabase Edge Function that calls Claude (`claude-opus-5-5`, low effort for chat turns, structured JSON output, server-side refusal fallback) |
+| AI | `supabase/functions/english-coach/index.ts`: Supabase Edge Function that calls Google Gemini (free tier, Flash models, JSON output) when `GEMINI_API_KEY` is set, otherwise Claude (`claude-opus-5-5`, paid API credit) |
 
 The function runs in the Supabase project **speakup** (`brrisogdhhzxpxgskbjh`). The API key stays on the server.
 
-- `ANTHROPIC_API_KEY` (Supabase dashboard → Edge Functions → Secrets): required, from platform.claude.com.
+- AI key (Supabase dashboard → Edge Functions → Secrets), the first one set wins:
+  - `GEMINI_API_KEY`: free, from aistudio.google.com → Get API key. The function tries `GEMINI_MODEL` (optional), then `gemini-flash-latest`, `gemini-3.5-flash`, `gemini-3-flash-preview` and `gemini-2.5-flash`, moving on when a model is missing or its free quota is used up. On the free tier Google may use the conversations to improve its models.
+  - `ANTHROPIC_API_KEY`: Claude, from platform.claude.com; needs API credit, which a Claude Pro subscription does not include.
 - **Passcode:** the function answers only requests that carry the code stored in `public.app_config` (key `passcode`), so nobody else can spend the API credit. The table has row level security on and no policies, so only the service role can read it. Enter the code in the app under *Ayarlar → Giriş kodu*. To change it: `update public.app_config set value = '...' where key = 'passcode';`
 
 ## Deploy

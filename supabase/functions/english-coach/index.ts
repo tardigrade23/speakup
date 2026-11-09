@@ -3,14 +3,16 @@
 //     -> {reply, corrections:[{original,corrected,explanation}], new_words:[{word,meaning}], hint}
 //   POST {mode:"feedback", scenario, level, explain, messages}
 //     -> {fluency, grammar, vocabulary, level_estimate, summary, strengths[], improve[], practice[]}
-// Secrets (Supabase → Edge Functions → Secrets):
-//   ANTHROPIC_API_KEY  required
+// AI provider (Supabase → Edge Functions → Secrets), the first one that is set wins:
+//   GEMINI_API_KEY     Google Gemini (free tier, aistudio.google.com). Optional GEMINI_MODEL.
+//   ANTHROPIC_API_KEY  Claude (paid API credit, platform.claude.com)
 // Passcode: requests must send the value of public.app_config 'passcode' (or the
 // APP_PASSCODE secret, if set) in the x-app-passcode header, so nobody else can
 // spend the API credit. The table is readable only with the service role key.
 import Anthropic from 'npm:@anthropic-ai/sdk@1.3.0';
 
-const client = new Anthropic({ apiKey: Deno.env.get('ANTHROPIC_API_KEY') });
+const GEMINI_KEY = Deno.env.get('GEMINI_API_KEY') || '';
+const client = new Anthropic({ apiKey: Deno.env.get('ANTHROPIC_API_KEY') || 'unset' });
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') || '';
 const SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
 
@@ -156,6 +158,85 @@ function textOf(content: Anthropic.Beta.BetaContentBlock[]) {
   return content.filter((b) => b.type === 'text').map((b) => (b as { text: string }).text).join('');
 }
 
+class ProviderError extends Error {
+  constructor(public code: string, public status: number, message = code) { super(message); }
+}
+
+// ---------- Gemini ----------
+// Model IDs change often, so try a few and remember the first that answers.
+const GEMINI_MODELS = [Deno.env.get('GEMINI_MODEL'), 'gemini-flash-latest', 'gemini-3.5-flash', 'gemini-3-flash-preview', 'gemini-2.5-flash']
+  .filter((m, i, a): m is string => !!m && a.indexOf(m) === i);
+let geminiModel = '';
+
+async function geminiOnce(model: string, system: string, messages: Msg[], schema: Record<string, unknown>, useSchema: boolean) {
+  const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': GEMINI_KEY },
+    body: JSON.stringify({
+      systemInstruction: { parts: [{ text: useSchema ? system : `${system}\n\nReply with only a JSON object that matches this JSON Schema:\n${JSON.stringify(schema)}` }] },
+      contents: messages.map((m) => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: m.content }] })),
+      generationConfig: useSchema
+        ? { responseMimeType: 'application/json', responseJsonSchema: schema }
+        : { responseMimeType: 'application/json' },
+    }),
+  });
+  const data = await res.json().catch(() => ({}));
+  return { status: res.status, data };
+}
+
+async function callGemini(system: string, messages: Msg[], schema: Record<string, unknown>) {
+  const order = geminiModel ? [geminiModel, ...GEMINI_MODELS.filter((m) => m !== geminiModel)] : GEMINI_MODELS;
+  let last = { status: 0, message: '' };
+  for (const model of order) {
+    let r = await geminiOnce(model, system, messages, schema, true);
+    // An API version that does not know responseJsonSchema: describe the schema in the prompt instead.
+    if (r.status === 400 && /responseJsonSchema|response_json_schema|Unknown name/i.test(JSON.stringify(r.data))) {
+      r = await geminiOnce(model, system, messages, schema, false);
+    }
+    const message = r.data?.error?.message || '';
+    if (r.status === 200) {
+      geminiModel = model;
+      const cand = r.data?.candidates?.[0];
+      if (!cand || cand.finishReason === 'SAFETY' || r.data?.promptFeedback?.blockReason) throw new ProviderError('refusal', 422);
+      const text = (cand.content?.parts || []).filter((p: { thought?: boolean }) => !p.thought).map((p: { text?: string }) => p.text || '').join('');
+      return JSON.parse(text.replace(/^```(?:json)?\s*|\s*```$/g, ''));
+    }
+    if (r.status === 400 && /API key/i.test(message)) throw new ProviderError('server_key', 500, message);
+    if (r.status === 401 || r.status === 403) throw new ProviderError('server_key', 500, message);
+    last = { status: r.status, message: `${model}: ${message}` };
+    // 404: model not available; 429: this model's free quota is used up; 5xx: overloaded. Try the next model.
+    if (r.status === 404 || r.status === 429 || r.status >= 500) continue;
+    break;
+  }
+  if (last.status === 429) throw new ProviderError('rate_limit', 429, last.message);
+  throw new ProviderError('api', 502, last.message);
+}
+
+// ---------- Claude ----------
+async function callClaude(system: string, messages: Msg[], schema: Record<string, unknown>, effort: 'low' | 'medium') {
+  try {
+    const response = await client.beta.messages.create({
+      model: MODEL,
+      max_tokens: 4000,
+      betas: ['server-side-fallback-2026-07-01'],
+      fallbacks: 'default',
+      system,
+      messages,
+      output_config: { effort, format: { type: 'json_schema', schema } },
+    });
+    if (response.stop_reason === 'refusal') throw new ProviderError('refusal', 422);
+    return JSON.parse(textOf(response.content));
+  } catch (e) {
+    if (e instanceof Anthropic.RateLimitError) throw new ProviderError('rate_limit', 429);
+    if (e instanceof Anthropic.AuthenticationError) throw new ProviderError('server_key', 500);
+    if (e instanceof Anthropic.APIError) {
+      if (/credit balance/i.test(e.message)) throw new ProviderError('no_credit', 402);
+      throw new ProviderError('api', 502, e.message);
+    }
+    throw e;
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
   if (req.method !== 'POST') return json({ error: 'method' }, 405);
@@ -191,27 +272,17 @@ Deno.serve(async (req) => {
     };
 
   try {
-    const response = await client.beta.messages.create({
-      model: MODEL,
-      max_tokens: 4000,
-      betas: ['server-side-fallback-2026-07-01'],
-      fallbacks: 'default',
-      system: request.system,
-      messages: request.messages,
-      output_config: { effort: request.effort, format: { type: 'json_schema', schema: request.schema } },
-    });
-    if (response.stop_reason === 'refusal') return json({ error: 'refusal' }, 422);
-    const data = JSON.parse(textOf(response.content));
+    const data = GEMINI_KEY
+      ? await callGemini(request.system, request.messages, request.schema)
+      : await callClaude(request.system, request.messages, request.schema, request.effort);
     return json(data);
   } catch (e) {
-    if (e instanceof Anthropic.RateLimitError) return json({ error: 'rate_limit' }, 429);
-    if (e instanceof Anthropic.AuthenticationError) return json({ error: 'server_key' }, 500);
-    if (e instanceof Anthropic.APIError) {
-      console.error('Claude API error', e.status, e.message);
-      if (/credit balance/i.test(e.message)) return json({ error: 'no_credit' }, 402);
-      return json({ error: 'api', status: e.status, message: e.message }, 502);
+    if (e instanceof ProviderError) {
+      console.error('AI provider error', e.code, e.message);
+      return json(e.code === 'api' ? { error: 'api', message: e.message } : { error: e.code }, e.status);
     }
     if (e instanceof SyntaxError) return json({ error: 'bad_model_output' }, 502);
+    console.error('Network error', e);
     return json({ error: 'network' }, 502);
   }
 });
